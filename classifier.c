@@ -1206,8 +1206,8 @@ int main(int argc, char** argv) {
     uint32_t number=0x0;
     uint32_t init_x8 = 0xd29ea648; // mov x8, #0xf532
     uint32_t init_lr = 0xd280021e;
-    uint32_t set_trap = 0x00000000; // set_udf/*   */for debugging set_trap
-    /* uint32_t set_trap = 0xd4200000; // set_trap for runtime set_trap */
+    /* uint32_t set_trap = 0x00000000; // set_udf#<{(|   |)}>#for debugging set_trap */
+    uint32_t set_trap = 0xd4200000; // set_trap for runtime set_trap
     int total = 0;
     int progress = 0;
     char *fileName;
