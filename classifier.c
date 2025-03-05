@@ -395,7 +395,8 @@ enum BitsFlags {
     STAGE4_flag = 0x800, // COND_STAGE_flag
     STAGE5_flag = 0x1000,
     ALARM_flag = 0x2000, // SIGALARM
-    ADJ_flag = 0x4000
+    ADJ_flag = 0x4000,
+    ETC_flag = 0x8000
 
 };
 const char *BitsFlagsNames[] ={
@@ -414,6 +415,7 @@ const char *BitsFlagsNames[] ={
                         "STAGE5_flag",
                         "ALARM_flag",
                         "ADJ_flag",
+                        "ETC_flag",
                         };
 
 enum triaging_method_num {
@@ -452,6 +454,7 @@ unsigned long current_stack;
 unsigned char dummy_stack[2048] ={0};
 unsigned char *dummy_ptr; 
 unsigned char *dummy1;
+unsigned char *dummy1_temp;
 int init_length;
 
 //Function pre define
@@ -469,6 +472,10 @@ void file_read(FILE *);
 void adjust();
 void init_vector_array(void);
 void progress_bar(int, int, int);
+void check_alu_subgrp(void);
+void check_ls_subgrp(void);
+void check_cond_subgrp(void);
+void check_br_subgrp(void);
 
 FILE* outfile;
 FILE* undoc_out;
@@ -503,6 +510,82 @@ asm(
         "_init_end:             \n"
 );
 extern char init_start, init_end;
+
+void check_br_subgrp(){
+    
+    
+    
+    
+    
+}
+
+
+void check_cond_subgrp(){
+    
+    int change = -1;
+    for(int i=0; i<32; i++){
+        if(gpr_after[i] != gpr_before[i]){
+            change = i;
+            //after operate and set flag
+            instruction |= ETC_flag;
+            break;
+        }
+    }
+    if(change == -1)
+        //only set flag
+        instrBitsFlag |= ETC_flag;
+}
+
+
+
+void check_ls_subgrp(){
+    unsigned char *zero_buf = calloc(1, 0x2000);
+    
+    if(!zero_buf){
+        printf("zero buf error\n");
+        exit(-1);
+    }
+    if(memcmp(dummy1_temp, zero_buf, 0x2000) != 0){
+        // maybe Store instruction
+        instrBitsFlag |= ETC_flag;
+    }
+    else {
+        //maybe Load instruction
+        instrBitsFlag |= ETC_flag;
+    }
+}
+
+void check_alu_subgrp(){
+
+    if(instrBitsFlag & GPR_flag){
+        int found = -1;
+        for(int i=0; i<32; i++){
+            if(gpr_after[i] != gpr_before[i]) {
+                for(int k=0; k<32; k++){
+                    if(gpr_after[i] == gpr_before[k]){
+                        found = k;
+                        break;
+                    }
+                }
+                if(found != -1)
+                    break;
+            }
+        }
+        if(found == -1)
+            // Data processing
+            instrBitsFlag |= ETC_flag;
+        else
+            // Data transport
+            instrBitsFlag |= ETC_flag;
+    }
+    else {
+        //TODO FP vs Vector vs Matrix
+
+    }
+
+
+}
+
 
 inline void progress_bar(int progress, int total, int method){
 
@@ -1206,8 +1289,8 @@ int main(int argc, char** argv) {
     uint32_t number=0x0;
     uint32_t init_x8 = 0xd29ea648; // mov x8, #0xf532
     uint32_t init_lr = 0xd280021e;
-    /* uint32_t set_trap = 0x00000000; // set_udf#<{(|   |)}>#for debugging set_trap */
-    uint32_t set_trap = 0xd4200000; // set_trap for runtime set_trap
+    uint32_t set_trap = 0x00000000; // set_udf/*   */for debugging set_trap
+    /* uint32_t set_trap = 0xd4200000; // set_trap for runtime set_trap */
     int total = 0;
     int progress = 0;
     char *fileName;
@@ -1257,13 +1340,15 @@ int main(int argc, char** argv) {
         perror("failed to open threadH");
         return 1;
     }
-
+    
     memcpy(instr_pointer, (void *)&init_start, init_length);
     memcpy(instr_pointer+init_length+4, &set_trap, 4);
     
     /* dummy_ptr = (unsigned char *)(((uintptr_t)dummy_stack + 15) & ~15) + sizeof(dummy_stack); */
     memset(dummy_stack, 0, sizeof(dummy_stack));
     dummy1 = mmap(NULL, 0x2000, PROT_NONE, MAP_ANON | MAP_PRIVATE,-1,0) + 0x1000;
+    memset(dummy1, 0 , sizeof(dummy1));
+    dummy1_temp = dummy1;
     dummy1 = (((uintptr_t)dummy1 +15) & ~15) + 1024;
 
     if((ss.ss_sp = malloc(SIGSTKSZ))==NULL){
