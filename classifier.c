@@ -1,5 +1,5 @@
-#define _GNU_SOURCE
 #include <stdio.h>
+#include <time.h>
 #include <sys/mman.h>
 #include <pthread.h>
 #include <string.h>
@@ -11,10 +11,6 @@
 #include <setjmp.h>
 #include <stdbool.h>
 #include <mach/mach_time.h>
-#include <libkern/OScacheControl.h>
-/* #include <capstone/capstone.h> */
-/* #include <llvm-c/Disassembler.h> */
-/* #include <llvm-c/Target.h> */
 
 #define urprint(outfile, rtype, reg_num, before, after) \
     fprintf(outfile, "chagned Register : %s%d\t b:%llx a:%llx\n", rtype, reg_num, before, after);
@@ -343,7 +339,7 @@ float v_init[32][4];
     :::"x8"             \
     );                  \
 
-// N != V && Z == 1
+// N != V && Z == 1 && C == 1
 // cond2 --> cond1 (changed)
 #define SET_CPSR_COND1()  \
     asm volatile(       \
@@ -461,8 +457,10 @@ char outString4[255];
 uint32_t Base_CPSR = 0x0;
 unsigned long current_stack;
 unsigned char dummy_stack[2048] ={0};
-unsigned char *dummy_ptr; 
+unsigned char *dummy_ptr_fp; 
+unsigned char *dummy_ptr_sp; 
 unsigned char *dummy1;
+void *code_mem;
 int init_length;
 
 //cycle check var
@@ -480,16 +478,17 @@ void init_before_register();
 void check_jit(void);
 void arg_config(int, char**);
 void file_read(FILE *);
-void adjust();
+static void adjust();
 void init_vector_array(void);
 void progress_bar(int, int, int);
-uint64_t cycle_check(uint32_t);
+static uint64_t cycle_check(uint32_t);
 typedef void (*func_t)(void);
 void stage1();
 void stage2();
 void stage3();
 void stage4();
 void stage5();
+void busy_sleep_ms(long);
 
 FILE* outfile;
 FILE* undoc_out;
@@ -497,10 +496,7 @@ FILE* forged_out;
 /* LLVMDisasmContextRef DCR; */
 
 //For forged
-volatile uint64_t orig_gpr_after[32] = {0};
-volatile uint64_t orig_vec_after[32][2] = {0};
-volatile uint64_t forged_gpr_after[32] = {0};
-volatile uint64_t forged_vec_after[32][2] = {0};
+volatile uint64_t fp_lr_sp[3] = {0};
 //GPR Register
 volatile uint64_t gpr_before[32] = {0};
 volatile uint64_t gpr_after[32] = {0};
@@ -518,12 +514,28 @@ asm(
         "movz x8, #0x60a3, lsl #48\n" 
         "movk x8, #0xa6f9, lsl #32\n" 
         "movk x8, #0x1827, lsl #16\n" 
-        "movk x8, #0x5701\n"     
+        "movk x8, #0x5701\n"
         /* "mov x8, 0x0e07         \n" */
         ".global _init_end      \n"
         "_init_end:             \n"
 );
 extern char init_start, init_end;
+
+void busy_sleep_ms(long milli){
+    struct timespec start, current;
+    long nanoseconds = milli * 1000000;
+    long elapsed_ns = 0;
+
+    if(clock_gettime(CLOCK_MONOTONIC, &start) == -1){
+        return;
+    }
+    do{
+        if(clock_gettime(CLOCK_MONOTONIC, &current) == -1){
+            return;
+        }
+        elapsed_ns = (current.tv_sec - start.tv_sec) * 1000000000L + (current.tv_nsec - start.tv_nsec);
+    }while(elapsed_ns < nanoseconds);
+}
 
 inline void progress_bar(int progress, int total, int method){
 
@@ -552,39 +564,35 @@ inline void progress_bar(int progress, int total, int method){
 }
 
 uint64_t check_cycle(uint32_t inst){
-
-    size_t size = 0x8000;
+    
     uint32_t *code;
     uint64_t start, end, result;
-    void *code_mem = mmap(NULL, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE | MAP_JIT, 0, 0);
-    if(code_mem == MAP_FAILED) {
-        perror("check cycle map failed");
-        exit(-2);
-    }
     code = code_mem;
     pthread_jit_write_protect_np(0);
     
     *code++ = 0xd5033fdf; // ISB
     *code++ = 0xd503201f; // NOP
-    *code++ = 0xd284e209; // MOV x9, #10000
+    /* *code++ = 0xd284e209; // MOV x9, #10000 */
     // loop_start:
     for(int i = 0; i < 8000; i++){
         *code++ = inst;
     }
-    *code++ = 0xf1000529; // SUBS x9, x9, #1
-    *code++ = 0x54fc17e1; // B.NE loop start
+    /* *code++ = 0xf1000529; // SUBS x9, x9, #1 */
+    /* *code++ = 0x54fc17e1; // B.NE loop start */
+    *code++ = 0xd5033fdf; // ISB
     *code++ = 0xd65f03c0; // RET
 
     pthread_jit_write_protect_np(1);
 
-    /* sys_icache_invalidate(code_mem, size); */
-    /* func_t func = (func_t)ptrauth_sign_unauthenticated(code_mem, ptrauth_key_function_pointer, 0); */
+    /* __builtin___clear_cache((char*)code_mem, (char*)code_mem + sizeof(code_mem)); */
     func_t func = (func_t)code_mem;
-    start = mach_absolute_time();
-    func();
-    end = mach_absolute_time();
 
-    munmap(code_mem, size);
+    start = mach_absolute_time();
+    for(int i=0; i<100; i++){
+        func();
+    }
+    end = mach_absolute_time();
+    
     result = end - start;
     return result;
 
@@ -695,12 +703,12 @@ void analyzing_result(){
             }
 
             fprintf(undoc_out, "Changed Register: ");
-            for(int i=0; i<28; i++){
-                if(gpr_before[i] != gpr_after[i]){
-                    instrBitsFlag |= GPR_flag;
-                    fprintf(undoc_out, "x%d ",i);
-                }
-            }
+            /* for(int i=0; i<28; i++){ */
+            /*     if(gpr_before[i] != gpr_after[i]){ */
+            /*         instrBitsFlag |= GPR_flag; */
+            /*         fprintf(undoc_out, "x%d ",i); */
+            /*     } */
+            /* } */
             
             fprintf(undoc_out, "\n");
             fprintf(undoc_out, "Changed Flag :");
@@ -711,6 +719,7 @@ void analyzing_result(){
             }
             
             fprintf(undoc_out, "\n\n");
+            fflush(undoc_out);
             break;
         default:
             break;
@@ -818,21 +827,24 @@ void check_jit(){
 
 void sig_handler(int signo, siginfo_t* si, void *p){
     
+    /* usleep(1*1000); */
     uint32_t pre_stage = instrBitsFlag & 0x1F00;
     ucontext_t *uc = (ucontext_t*)p;
     uint32_t cpsr_temp = uc->uc_mcontext->__ss.__cpsr;
+    uint64_t *gpr_ptr = (uint64_t *)&uc->uc_mcontext->__ss;
     /* uint64_t  *pc_addr = uc->uc_mcontext->__ss.__opaque_pc; */
     /* uint64_t  pc_val = (uint64_t)uc->uc_mcontext->__ss.__opaque_pc; */
     /* uint64_t pc_addr = pc_val & 0x0000FFFFFFFFFFFF; */
+    fp_lr_sp[1] = fp_lr_sp[1] & 0x0000FFFFFFFFFFFF;
     uint64_t *pc_addr = uc->uc_mcontext->__ss.__pc;
     if(signo == SIGALRM){
-        alarm(0);
+        /* alarm(0); */
         instrBitsFlag &= 0x0;
         instrBitsFlag |= ALARM_flag;
         goto end;
     }
     
-    /* usleep(1*1000); */
+    usleep(1*1000);
     
 check_prework: 
     if(triage_Method == Normal){
@@ -844,9 +856,19 @@ check_prework:
                 /*     #<{(| goto Save_normal; |)}># */
                 /*     goto end; */
                 /* } */
+                if((pc_addr == 0xdeadbeaf)){
+                    instrBitsFlag &= ~STAGE1_flag;
+                    instrBitsFlag |= BR_flag;
+                    goto end;
+                }
                 if((signo == SIGILL) && (pc_addr == (instr_pointer+init_length))){
                     instrBitsFlag &= ~STAGE1_flag;
                     instrBitsFlag |= SP_flag;
+                    goto end;
+                }
+                else if((signo == SIGILL) && (pc_addr == (instr_pointer+init_length+4))){
+                    instrBitsFlag &= ~STAGE1_flag;
+                    instrBitsFlag |= STAGE4_flag;
                     goto end;
                 }
                 else if(signo == SIGSEGV){
@@ -867,7 +889,7 @@ check_prework:
                 else {  // SIGTRAP
                     instrBitsFlag &= ~STAGE1_flag;
                     instrBitsFlag |= STAGE4_flag;
-                    goto end;
+                    goto Save_normal;
                 }
             case STAGE2_flag:
                 if(signo == SIGILL){
@@ -876,7 +898,7 @@ check_prework:
                     /* goto Save_normal; */
                     goto end;
                 }
-                else if(signo == SIGBUS){ //ret call도 여기 아님?
+                else if(signo == SIGBUS || signo == SIGSEGV){ //ret call도 여기 아님?
                     instrBitsFlag &= ~STAGE2_flag;
                     instrBitsFlag |= LS_flag; // enable LS_flag
                     /* goto Save_normal; */
@@ -913,7 +935,7 @@ check_prework:
                 if(cpsr_temp == 0){
                     instrBitsFlag &= ~STAGE4_flag;
                     instrBitsFlag |= STAGE5_flag;
-                    goto end;
+                    goto Save_normal;
                 }
                 else{
                     instrBitsFlag &= ~STAGE4_flag;
@@ -943,19 +965,19 @@ check_prework:
     
 Save_normal: // Save Undocumented instruction status
     /* usleep(1*1000); */
-
+    /* busy_sleep_ms(1); */
     for(int i=0; i<32; i++){
         /* uint64_t *temp = (uint64_t *)&uc->uc_mcontext->__ns.__v[i]; */
-        uint64_t *gpr_ptr = (uint64_t *)&uc->uc_mcontext->__ss;
         uint32_t *v_reg_hex = (uint32_t *)&uc->uc_mcontext->__ns.__v[i];
         uint32_t *v_init_hex = (uint32_t *)v_init[i];
             
         gpr_after[i] = *(gpr_ptr + i);
-        if(i == 29 || i == 31)
-            gpr_after[i] = gpr_after[i] & 0x00000FFFFFFFFF;
-        if(gpr_before[i] != (gpr_after[i]) && i != 30){ //이게 족쇄네?
-            instrBitsFlag &= ~NOP_flag;
+        /* if(i == 29 || i == 31) */
+        /*     gpr_after[i] = gpr_after[i] & 0x00000FFFFFFFFF; */
+        if((gpr_before[i] != (gpr_after[i]))){
+            instrBitsFlag &= ~(0x1F40); // unmaks All stage and NOP flag
             instrBitsFlag |= ALU_flag;
+            break;
             /* instrBitsFlag &= ~STAGE4_flag; */
         }
         for(int k=0; k<4; k++){
@@ -967,13 +989,16 @@ Save_normal: // Save Undocumented instruction status
         }
     }
     after_cpsr = uc->uc_mcontext->__ss.__cpsr;
-    uc->uc_mcontext->__ss.__x[29] = gpr_before[29]; // 무슨 이유인지 모르겠는데 fp가 망가진다 recovery 해줘야함
+    /* uc->uc_mcontext->__ss.__x[29] = gpr_before[29]; // 무슨 이유인지 모르겠는데 fp가 망가진다 recovery 해줘야함 */
     goto end;
     
 end:
     /* sleep(1); */
-    uc->uc_mcontext->__ss.__x[29] = gpr_before[29];
-    
+    /* uc->uc_mcontext->__ss.__lr = gpr_before[30]; */
+    uc->uc_mcontext->__ss.__sp = fp_lr_sp[2];
+    uc->uc_mcontext->__ss.__lr = fp_lr_sp[1];
+    uc->uc_mcontext->__ss.__fp = fp_lr_sp[0];
+    asm volatile("ISB sy\n");
     if(pre_stage == STAGE1_flag) longjmp(st1, 1);
     else if(pre_stage == STAGE2_flag) longjmp(st2, 1);
     else if(pre_stage == STAGE3_flag) longjmp(st3, 1);
@@ -1000,12 +1025,13 @@ void configure_handler(void (*handler)(int, siginfo_t*, void*)){
 
 void adjust(){
  
-    uint16_t mask = 0xFFFF;
+    uint16_t mask = 0xd5000000;
     int adj_value[3] = {0};
     int max =0, idx= 0;
     
     /* if((current_instr & mask) == 0){ // 명령어의 끝이 0000이라 값을 뺄때 opcode가 달리는것을 방지 */
-    if(current_instr == 0xd503201f)
+    /* if(current_instr == 0xd503201f) */
+    if(current_instr & mask)
         goto adj_skip;
     adj_instr[0] = current_instr+1;  
     adj_instr[1] = current_instr+2;  
@@ -1031,13 +1057,13 @@ void adjust(){
         
         instrBitsFlag |= STAGE1_flag;
         while((instrBitsFlag & 0x1F00) != 0x0){
-            
-            /* alarm(1); */
-            dummy_ptr = dummy1;
-            gpr_before[29] = dummy_ptr;
-            gpr_before[30] = dummy_ptr;
-            gpr_before[31] = dummy_ptr;
-            
+            /* alarm(3); */
+            dummy_ptr_fp = dummy1;
+            dummy_ptr_sp = dummy1+0x10;
+            gpr_before[29] = dummy_ptr_fp; //fp register
+            gpr_before[30] = 0xdeadbeaf; //lr register
+            gpr_before[31] = dummy_ptr_sp; //sp register
+
             if((instrBitsFlag & STAGE1_flag) == STAGE1_flag){
                 init_before_register();
                 stage1();
@@ -1059,7 +1085,6 @@ void adjust(){
                 stage5();
             }
             /* alarm(0); */
-
         }
         if((instrBitsFlag & ALU_flag) == ALU_flag)
             adj_value[0]++;
@@ -1069,13 +1094,13 @@ void adjust(){
             adj_value[2]++;
     }
     
-    for(int i=0; i < sizeof(adj_value); i++){
+    for(int i=0; i < 3; i++){
         if(adj_value[i] > max){
             max  = adj_value[i];
             idx = i;
         }
     }
-
+    
     switch(idx){
         case 0:
             instrBitsFlag &= 0x0;
@@ -1100,27 +1125,33 @@ adj_skip:
 }
 
 void stage1(){
-
+    
     if(setjmp(st1) == 0){
         
+        asm volatile(
+        "mov %0, fp\n"
+        "mov %1, lr\n"
+        :"=r"(fp_lr_sp[0]), "=r"(fp_lr_sp[1])
+        :: "fp", "lr", "x8", "x9"
+        );
+
         INIT_VECTOR_REG2();
         INIT_VECTOR_REG3();
         asm volatile(
         "mov %[current], sp\n"
-        :[current]"=r"(current_stack)
+        :[current]"=r"(fp_lr_sp[2])
         ::
         );
         
         asm volatile(
-        "mov sp, %[dummy]\n"
-        "mov fp, %[dummy]\n"
-        "mov lr, %[dummy]\n"
-        ::[dummy]"r"(dummy_ptr)
-        :"sp","fp","lr"
+        "mov sp, %[sp]\n"
+        "mov fp, %[fp]\n"
+        ::[fp]"r"(dummy_ptr_fp) , [sp]"r"(dummy_ptr_sp)
+        :"sp","fp"
         );
         
         INIT_GPR_TO_64NUM();
-        SET_CPSR_COND1();
+        SET_CPSR_COND2();
        
         asm volatile(
         "blr %[ptr]"
@@ -1128,37 +1159,46 @@ void stage1(){
         );
     }
     else {
-        asm volatile(
-        "mov sp, %[current]\n"
-        "mov x29, %[x29]\n"
-        "mov x30, %[x30]\n"
-        ::
-        [current]"r"(current_stack),
-        [x29]"r"(gpr_before[29]),
-        [x30]"r"(gpr_before[30])
-        :"sp","fp","lr"
-        );
+        asm volatile("isb sy\n");
+        /* asm volatile( */
+        /* "mov sp, %[current]\n" */
+        /* "mov x29, %[x29]\n" */
+        /* "mov x30, %[x30]\n" */
+        /* :: */
+        /* [current]"r"(current_stack), */
+        /* [x29]"r"(gpr_before[29]), */
+        /* [x30]"r"(gpr_before[30]) */
+        /* :"sp","fp","lr" */
+        /* ); */
     }
 }
 
 void stage2(){
-
-
+    
     if(setjmp(st2) == 0){
+        
+        asm volatile(
+        "mov %0, fp\n"
+        "mov %1, lr\n"
+        :"=r"(fp_lr_sp[0]), "=r"(fp_lr_sp[1])
+        :: "fp", "lr", "x8", "x9"
+        );
+
+        INIT_VECTOR_REG2();
+        INIT_VECTOR_REG3();
         asm volatile(
         "mov %[current], sp\n"
-        :[current]"=r"(current_stack)
+        :[current]"=r"(fp_lr_sp[2])
         ::
         );
         
         asm volatile(
-        "mov sp, %[dummy]\n"
-        "mov fp, %[dummy]\n"
-        "mov lr, %[dummy]\n"
-        ::[dummy]"r"(dummy_ptr)
-        :"sp","fp","lr"
+        "mov sp, %[sp]\n"
+        "mov fp, %[fp]\n"
+        ::[fp]"r"(dummy_ptr_fp) , [sp]"r"(dummy_ptr_sp)
+        :"sp","fp"
         );
-
+        
         INIT_GPR_TO_MEM();
         SET_CPSR_COND1();
      
@@ -1166,20 +1206,10 @@ void stage2(){
         "blr %[ptr]"
         ::[ptr]"r"(instr_pointer)
         );
-
+        
     }
     else {
-
-        asm volatile(
-        "mov sp, %[current]\n"
-        "mov x29, %[x29]\n"
-        "mov x30, %[x30]\n"
-        ::
-        [current]"r"(current_stack),
-        [x29]"r"(gpr_before[29]),
-        [x30]"r"(gpr_before[30])
-        :"sp","fp","lr"
-        );
+        asm volatile("isb sy\n");
     }
 
 }
@@ -1188,18 +1218,27 @@ void stage3(){
 
 
     if(setjmp(st3) == 0){
+        
+        asm volatile(
+        "mov %0, fp\n"
+        "mov %1, lr\n"
+        :"=r"(fp_lr_sp[0]), "=r"(fp_lr_sp[1])
+        :: "fp", "lr", "x8", "x9"
+        );
+
+        INIT_VECTOR_REG2();
+        INIT_VECTOR_REG3();
         asm volatile(
         "mov %[current], sp\n"
-        :[current]"=r"(current_stack)
+        :[current]"=r"(fp_lr_sp[2])
         ::
         );
         
         asm volatile(
-        "mov sp, %[dummy]\n"
-        "mov fp, %[dummy]\n"
-        "mov lr, %[dummy]\n"
-        ::[dummy]"r"(dummy_ptr)
-        :"sp","fp","lr"
+        "mov sp, %[sp]\n"
+        "mov fp, %[fp]\n"
+        ::[fp]"r"(dummy_ptr_fp) , [sp]"r"(dummy_ptr_sp)
+        :"sp","fp"
         );
         
         INIT_GPR_TO_MEM();
@@ -1211,16 +1250,7 @@ void stage3(){
         );
     }
     else {
-        asm volatile(
-        "mov sp, %[current]\n"
-        "mov x29, %[x29]\n"
-        "mov x30, %[x30]\n"
-        ::
-        [current]"r"(current_stack),
-        [x29]"r"(gpr_before[29]),
-        [x30]"r"(gpr_before[30])
-        :"sp","fp","lr"
-        );
+        asm volatile("isb sy\n");
     }
 }
 
@@ -1229,22 +1259,29 @@ void stage4(){
     
     if(setjmp(st4) == 0){
         
+        asm volatile(
+        "mov %0, fp\n"
+        "mov %1, lr\n"
+        :"=r"(fp_lr_sp[0]), "=r"(fp_lr_sp[1])
+        :: "fp", "lr", "x8", "x9"
+        );
+
         INIT_VECTOR_REG2();
         INIT_VECTOR_REG3();
         
         asm volatile(
         "mov %[current], sp\n"
-        :[current]"=r"(current_stack)
+        :[current]"=r"(fp_lr_sp[2])
         ::
         );
         
         asm volatile(
-        "mov sp, %[dummy]\n"
-        "mov fp, %[dummy]\n"
-        "mov lr, %[dummy]\n"
-        ::[dummy]"r"(dummy_ptr)
-        :"sp","fp","lr"
+        "mov sp, %[sp]\n"
+        "mov fp, %[fp]\n"
+        ::[fp]"r"(dummy_ptr_fp) , [sp]"r"(dummy_ptr_sp)
+        :"sp","fp"
         );
+
         INIT_GPR_TO_64NUM();
         SET_CPSR_COND3();
      
@@ -1254,16 +1291,7 @@ void stage4(){
         );
     }
     else {
-        asm volatile(
-        "mov sp, %[current]\n"
-        "mov x29, %[x29]\n"
-        "mov x30, %[x30]\n"
-        ::
-        [current]"r"(current_stack),
-        [x29]"r"(gpr_before[29]),
-        [x30]"r"(gpr_before[30])
-        :"sp","fp","lr"
-        );
+        asm volatile("isb sy\n");
     }
 }
 
@@ -1271,21 +1299,27 @@ void stage5(){
 
     if(setjmp(st5) == 0){
         
+        asm volatile(
+        "mov %0, fp\n"
+        "mov %1, lr\n"
+        :"=r"(fp_lr_sp[0]), "=r"(fp_lr_sp[1])
+        :: "fp", "lr", "x8", "x9"
+        );
+
         INIT_VECTOR_REG2();
         INIT_VECTOR_REG3();
 
         asm volatile(
         "mov %[current], sp\n"
-        :[current]"=r"(current_stack)
+        :[current]"=r"(fp_lr_sp[2])
         ::
         );
         
         asm volatile(
-        "mov sp, %[dummy]\n"
-        "mov fp, %[dummy]\n"
-        "mov lr, %[dummy]\n"
-        ::[dummy]"r"(dummy_ptr)
-        :"sp","fp","lr"
+        "mov sp, %[sp]\n"
+        "mov fp, %[fp]\n"
+        ::[fp]"r"(dummy_ptr_fp) , [sp]"r"(dummy_ptr_sp)
+        :"sp","fp"
         );
 
         INIT_GPR_TO_64NUM();
@@ -1298,18 +1332,9 @@ void stage5(){
 
     }
     else {
-        asm volatile(
-        "mov sp, %[current]\n"
-        "mov x29, %[x29]\n"
-        "mov x30, %[x30]\n"
-        ::
-        [current]"r"(current_stack),
-        [x29]"r"(gpr_before[29]),
-        [x30]"r"(gpr_before[30])
-        :"sp","fp","lr"
-        );
+        asm volatile("isb sy\n");
     }
-}
+}   
 
 int main(int argc, char** argv) {
     
@@ -1322,7 +1347,7 @@ int main(int argc, char** argv) {
     uint32_t init_x8 = 0xd29ea648; // mov x8, #0xf532
     uint32_t init_lr = 0xd280021e;
     /* uint32_t set_trap = 0x00000000; // set_udf#<{(|   |)}>#for debugging set_trap */
-    uint32_t set_trap = 0xd4200180; // set_trap for runtime set_trap
+    uint32_t set_trap = 0xd4200000; // set_trap for runtime set_trap
     int total = 0;
     int progress = 0;
     char *fileName;
@@ -1342,8 +1367,7 @@ int main(int argc, char** argv) {
     Guard_page1 = mmap(NULL, PAGE_SIZE, PROT_NONE, MAP_PRIVATE|MAP_ANON, 0,0);
     instr_pointer = mmap(Guard_page1, PAGE_SIZE, PROT_READ|PROT_EXEC|PROT_WRITE, MAP_PRIVATE|MAP_ANON|MAP_JIT, 0, 0);
     Guard_page2 = mmap(instr_pointer, PAGE_SIZE, PROT_NONE, MAP_PRIVATE|MAP_ANON,0,0);
-    /* test_pointer = instr_pointer+0x83; // unaliged memory를 넣어 SIGBUS를 발생시키는 것이 목적 */
-    test_pointer = instr_pointer+0x85; // unaliged memory를 넣어 SIGBUS를 발생시키는 것이 목적
+    test_pointer = instr_pointer+0x80; // unaliged memory를 넣어 SIGBUS를 발생시키는 것이 목적
     printf("GP1 : %p\nIP : %p\nGP2 : %p\n", Guard_page1, instr_pointer, Guard_page2);
 #endif
     
@@ -1378,7 +1402,14 @@ int main(int argc, char** argv) {
     
     /* dummy_ptr = (unsigned char *)(((uintptr_t)dummy_stack + 15) & ~15) + sizeof(dummy_stack); */
     memset(dummy_stack, 0, sizeof(dummy_stack));
-    dummy1 = mmap(NULL, 0x2000, PROT_NONE, MAP_ANON | MAP_PRIVATE,-1,0) + 0x1000;
+
+    /* dummy1 = mmap(NULL, 0x2000, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE,-1,0); */
+    /* ((volatile char *)dummy1)[0] = 0; */
+    /* if(mprotect(dummy1, sizeof(dummy1), PROT_NONE) != 0){ */
+    /*     perror("mprotect"); */
+    /*     return 1; */
+    /* } */
+    dummy1 = mmap(NULL, 0x8000, PROT_NONE, MAP_ANON | MAP_PRIVATE,-1,0) + 0x1000;
     dummy1 = (((uintptr_t)dummy1 +15) & ~15) + 1024;
 
     if((ss.ss_sp = malloc(SIGSTKSZ))==NULL){
@@ -1413,25 +1444,40 @@ int main(int argc, char** argv) {
     /* triage_Method = Dry_run; */
     init_vector_array();
     
+    code_mem = mmap(NULL, 0x8000, PROT_READ | PROT_WRITE | PROT_EXEC,  MAP_ANON | MAP_PRIVATE | MAP_JIT, 0, 0);
+    
+    if(code_mem == MAP_FAILED) {
+        perror("check cycle map failed");
+        exit(-12);
+    }
     //check nop cycle
-    nop_cycle = check_cycle(0xd503201f);
+    /* nop_cycle = check_cycle(0xd503201f); */
+    nop_cycle = 320;
+    printf("base cycle = %llu\n\n\n", nop_cycle);
 
-    triage_Method = Normal;
+    triage_Method = 123;
     //dry run
     do {
-        dummy_ptr = dummy1;
-        gpr_before[29] = dummy_ptr;
-        gpr_before[30] = dummy_ptr;
-        gpr_before[31] = dummy_ptr;
-        init_before_register();
+        /* dummy_ptr = dummy1; */
+        /* gpr_before[29] = dummy_ptr; */
+        /* gpr_before[30] = dummy_ptr; */
+        /* gpr_before[31] = dummy_ptr; */
+        /* init_before_register(); */
         stage1();
     } while(0);
 
+    asm volatile("isb\n");
+    sleep(1); // why? sync?
+
     while(fgets(line, 1024, input_file) != NULL) {
-        
+
+        /* asm volatile(".inst 0x00201220\n"); */
+        busy_sleep_ms(1);
         progress++;
+        /* printf("proegress : %lld\n", progress); */
         progress_bar(progress, total, triage_Method);
-        
+        if(progress % 1000 == 0)
+            busy_sleep_ms(100);
         //Bitflags init func 필요
         instrBitsFlag &= 0x0;   //init instrBitsFlag
         token = strtok(line, del);
@@ -1459,11 +1505,13 @@ int main(int argc, char** argv) {
             instrBitsFlag |= STAGE1_flag;
             while((instrBitsFlag & 0x1F00) != 0x0){
                 
-                dummy_ptr = dummy1;
-                gpr_before[29] = dummy_ptr;
-                gpr_before[30] = dummy_ptr;
-                gpr_before[31] = dummy_ptr;
+                dummy_ptr_fp = dummy1;
+                dummy_ptr_sp = dummy1+0x10;
+                gpr_before[29] = dummy_ptr_fp; //fp register
+                gpr_before[30] = 0xdeadbeaf; //lr register
+                gpr_before[31] = dummy_ptr_sp; //sp register
                 
+                /* printf("instrBitsFlag : %x\n", instrBitsFlag); */
                 if((instrBitsFlag & STAGE1_flag) == STAGE1_flag){
                     init_before_register();
                     stage1();
@@ -1485,16 +1533,18 @@ int main(int argc, char** argv) {
                     stage5();
                 }
             }
-            if((instrBitsFlag & NOP_flag) == NOP_flag)
+            if((instrBitsFlag & NOP_flag) == NOP_flag){
                 adjust();
-
+            }
             if((instrBitsFlag & NOP_flag) == NOP_flag){
                 instr_cycle = check_cycle(current_instr);
-               if(instr_cycle > 10*instr_cycle){
+               if(instr_cycle > 3*nop_cycle){
                     instrBitsFlag &= 0x0;
                     instrBitsFlag |= SP_flag;
+                    memset(code_mem, 0, sizeof(code_mem));
                }
             }
+        /* asm volatile(".inst 0x00201221\n"); */
             break;
         case Skip:
             printf("Skip instr: %llx\n", current_instr);
@@ -1506,12 +1556,16 @@ int main(int argc, char** argv) {
             break;
         }
         analyzing_result();
-
 skip:0;
         /* printf("\n"); */
         fflush(stdout);
     }
     
+    munmap(code_mem, 0x8000);
+    munmap(Guard_page1, sizeof(Guard_page1));
+    munmap(Guard_page2, sizeof(Guard_page2));
+    munmap(dummy1, sizeof(dummy1));
+    munmap(instr_pointer, sizeof(instr_pointer));
     printf("Search end\n");
     
     return 0;
