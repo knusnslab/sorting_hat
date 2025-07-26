@@ -6,7 +6,7 @@ Generating a custom fuzzer for Apple Silicon
 From the project root directory, run the following command:
 
 ``` 
-./fetch_Apple_custom.sh
+./patch_Apple_custom.sh
 ```
 
 After running the command, Apple Silicon-optimized fuzzer source code will be generated in the Apple_inorder_custom_fuzzer and Apple_reverse_custom_fuzzer directories.
