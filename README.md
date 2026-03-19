@@ -1,6 +1,6 @@
 # sorting_hat
 
-## Build
+## Build12
 To explore and analyze undocumented instructions on Apple Silicon, you can build a custom fuzzer based on the iScanU project (https://github.com/RensDofferhoff/iScanU).
 
 Generating a custom fuzzer for Apple Silicon
