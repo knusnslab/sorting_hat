@@ -1,0 +1,224 @@
+diff --git a/Makefile b/Makefile
+index de4be88..5d7bcbf 100644
+--- a/Makefile
++++ b/Makefile
+@@ -2,13 +2,13 @@
+ 
+ CC=g++
+ TARGET = scanner
+-CFLAGS= -std=c++14 -g -Wextra -static #-DLOW_MEMORY
++CFLAGS= -std=c++14 -O0 -fno-exceptions -Wextra #-DLOW_MEMORY
+ LIBS=
+ 
+ IDIR =include
+ ODIR=obj
+ SDIR=src
+-ARCH_DIR=arch/aarch64
++ARCH_DIR=arch/RV64G
+ DISAS_DIR=disas
+ 
+ INCLUDE= -I$(ARCH_DIR) -I$(DISAS_DIR) -I$(IDIR)
+diff --git a/arch/aarch64/ArchFunctions.cpp b/arch/aarch64/ArchFunctions.cpp
+index 3f59951..0e15823 100644
+--- a/arch/aarch64/ArchFunctions.cpp
++++ b/arch/aarch64/ArchFunctions.cpp
+@@ -1,5 +1,5 @@
+ #include "ArchFunctions.h"
+-#include <capstone/capstone.h>
++#include <capstone/capstone/capstone.h>
+ #include <string.h>
+ 
+ void setState(mcontext_t* context, reg_t pc, reg_t regs[]) {
+diff --git a/include/Utility.h b/include/Utility.h
+index 2e3fee1..def162d 100644
+--- a/include/Utility.h
++++ b/include/Utility.h
+@@ -1,4 +1,5 @@
+ #pragma once
++#include <string>
+ 
+ extern bool debugMode;
+ 
+diff --git a/src/Analyser.cpp b/src/Analyser.cpp
+index ecb83f6..b1f93b3 100644
+--- a/src/Analyser.cpp
++++ b/src/Analyser.cpp
+@@ -5,6 +5,8 @@
+ #include <unistd.h>
+ #include <string>
+ #include <string.h>
++#include <iostream>
++#include <iomanip>
+ 
+ void (*analyse)(Scanner*);
+ 
+@@ -13,14 +15,14 @@ void basicAnalysis(Scanner* data) {
+     int signo = data->lastSigno;
+     siginfo_t* info = data->lastInfo;
+     void* context = data->lastContext;
+-
++    // sleep(1);
+     bool isValid = disassemble(data, data->currentInstruction, NULL);
+-
++    	// std::cout << "Instr: " << std::setfill('0') <<  std::setw(0) << std::hex << data->currentInstruction << std::endl;
+     //Log instruction if it is a disassembler fault or hidden instruction
+     //instruction is not recognized when SIGILL is delivered with si_code ILL_ILLOPC
+ 	if(signo == SIGILL && info->si_code == ILL_ILLOPC && isValid) {
+         std::string output = "D " + std::to_string(data->currentInstruction)+ " " + std::to_string(signo) + " " + std::to_string(info->si_code) + "\n";
+-        write(data->outputFD, output.c_str(), output.size());
++	write(data->outputFD, output.c_str(), output.size());
+ 	}
+ 	else if(!(signo == SIGILL && info->si_code == ILL_ILLOPC) && !isValid) {
+         std::string output = "H " + std::to_string(data->currentInstruction)+ " " + std::to_string(signo) + " " + std::to_string(info->si_code) + "\n";
+diff --git a/src/Feeder.cpp b/src/Feeder.cpp
+index 198cf9d..927168a 100644
+--- a/src/Feeder.cpp
++++ b/src/Feeder.cpp
+@@ -12,12 +12,12 @@ bool exhaustive(Scanner* data, instr_t* nextInstruction) {
+         return true;
+     }
+     else {
+-        tempInstruction = data->currentInstruction + 1;
++        tempInstruction = data->currentInstruction - 1;
+         while(blacklist.search(tempInstruction)) {
+             if(tempInstruction == data->finalInstruction) {
+                 return true;
+             }
+-            tempInstruction++;
++            tempInstruction--;
+             data->numInstrExec++;
+         }
+         *nextInstruction = tempInstruction;
+diff --git a/src/Handlers.cpp b/src/Handlers.cpp
+index a717638..8398a51 100644
+--- a/src/Handlers.cpp
++++ b/src/Handlers.cpp
+@@ -12,6 +12,7 @@
+ #include <errno.h>
+ #include "ArchFunctions.h"
+ #include <string>
++#include <iostream>
+ 
+ //Memory cage handlers
+ //==============================================================================
+diff --git a/src/ScannerManager.cpp b/src/ScannerManager.cpp
+index d6fe6aa..13f9366 100644
+--- a/src/ScannerManager.cpp
++++ b/src/ScannerManager.cpp
+@@ -1,6 +1,7 @@
+ #include "ScannerManager.h"
+ #include <string.h>
+ #include <sched.h>
++#include <cerrno>
+ 
+ uint8_t* stdPage;
+ std::unordered_map<pid_t, Scanner*> threadDataMap;
+diff --git a/src/ScannerManagerMC.cpp b/src/ScannerManagerMC.cpp
+index 04e9221..a9109fa 100644
+--- a/src/ScannerManagerMC.cpp
++++ b/src/ScannerManagerMC.cpp
+@@ -4,7 +4,7 @@
+ #include "Handlers.h"
+ #include "Utility.h"
+ #include <signal.h>
+- #include <sys/wait.h>
++#include <sys/wait.h>
+ #include <sys/mman.h>
+ #include <sys/stat.h>
+ #include <assert.h>
+@@ -13,6 +13,7 @@
+ #include <string.h>
+ #include <sched.h>
+ #include <fcntl.h>
++#include <iostream>
+ 
+ ScannerManagerMC::ScannerManagerMC(int _numThreads, uint64_t first, uint64_t last) : ScannerManager(_numThreads) {
+     registerHandlers();
+@@ -28,9 +29,13 @@ ScannerManagerMC::ScannerManagerMC(int _numThreads, uint64_t first, uint64_t las
+     if (last - first < (uint64_t)numThreads && last - first > 0) {
+         numThreads = last - first;
+     }
+-    uint64_t instrPerThread = (last - first) / numThreads;
++    uint64_t instrPerThread = (first - last) / numThreads;
+     reg_t startInstruction = first;
+-    reg_t finalInstruction = first + instrPerThread;
++    reg_t finalInstruction = first - instrPerThread;
++    std::cout << "first : " << std::hex << startInstruction << std::endl;
++    std::cout << "last : " << std::hex << finalInstruction << std::endl;
++    std::cout << "instrPerThread : " << std::hex << instrPerThread << std::endl;
++
+     //Setup all scanner units
+     for (int i = 0; i < numThreads; ++i) {
+         Scanner* scannerData = (Scanner*)mmap(NULL, sizeof(Scanner), PROT_WRITE | PROT_READ, MAP_SHARED | MAP_ANONYMOUS | MAP_NORESERVE, 0, 0);
+@@ -41,6 +46,9 @@ ScannerManagerMC::ScannerManagerMC(int _numThreads, uint64_t first, uint64_t las
+         scannerData->debugFD = openCriticalOutputFile("results/debug" + std::to_string(i));
+         localScannerInit(scannerData);
+ 
++        std::cout << "s:" << std::hex << startInstruction << std::endl;
++        std::cout << "f:" << std::hex << finalInstruction << std::endl;
++
+         pid_t pid = fork();
+         if(pid == -1) {
+             printf("Failed to create ptrace scanner\n");
+@@ -53,11 +61,15 @@ ScannerManagerMC::ScannerManagerMC(int _numThreads, uint64_t first, uint64_t las
+         }
+         threadDataMap.insert({pid, scannerData});
+         scannerData->workerID = i;
++        // startInstruction = (finalInstruction + 1);
++        // finalInstruction += instrPerThread;
++        startInstruction = startInstruction - instrPerThread;
++        finalInstruction = finalInstruction - instrPerThread-1;
+ 
+-        startInstruction = (finalInstruction + 1);
+-        finalInstruction += instrPerThread;
++        
+         if (i == numThreads - 1) {
+-            scannerData->finalInstruction = last;
++            	scannerData->finalInstruction = scannerData->currentInstruction - instrPerThread;
++		//scannerData->finalInstruction = last;
+         }
+     }
+ }
+diff --git a/src/main.cpp b/src/main.cpp
+index 9932c76..58a1360 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -16,16 +16,17 @@ int main(int argc, char *argv[]) {
+     int numThreads = 1;
+     int numCores = 1;
+     bool setAffinity = false;
+-    uint64_t firstInstruction = 0;
+-    uint64_t lastInstruction = MaxNumInstructions - 1;
++    uint64_t firstInstruction = 0xFFFFFFFF;
++    uint64_t lastInstruction = 0;
+     method = Method::MEMCAGE;
+     //set fetch and analysis function pointers
+     analyse = &basicAnalysis;
+     fetchInstruction = &exhaustive;
++    /*
+     if(variableLengthEncoding) {
+         lastInstruction = ((reg_t)1 << (instructionSize * 8)) - 1;
+     }
+-
++    */
+     uint64_t arg;
+     int option;
+     while ((option = getopt(argc, argv, "j:b:e:a:mpkid")) != -1) {
+@@ -42,7 +43,7 @@ int main(int argc, char *argv[]) {
+             break;
+         case 'b':
+             arg = strtoull(optarg, NULL, 0);
+-            if (arg <= lastInstruction) {
++            if (arg <= firstInstruction) {
+                 firstInstruction = arg;
+             }
+             break;
+@@ -50,7 +51,7 @@ int main(int argc, char *argv[]) {
+             break;
+         case 'e':
+             arg = strtoull(optarg, NULL, 0);
+-            if (arg <= lastInstruction && arg >= firstInstruction) {
++            if (arg >= lastInstruction && arg <= firstInstruction) {
+                 lastInstruction = arg;
+             }
+             break;
