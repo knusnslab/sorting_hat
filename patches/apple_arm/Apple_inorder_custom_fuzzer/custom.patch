@@ -1,23 +1,5 @@
 Binary files iScanU/.DS_Store and custom_code/.DS_Store differ
 Binary files iScanU/.git/index and custom_code/.git/index differ
-diff --color -urN iScanU/.git/logs/HEAD custom_code/.git/logs/HEAD
---- iScanU/.git/logs/HEAD	2025-07-26 21:32:11
-+++ custom_code/.git/logs/HEAD	2025-07-26 21:31:46
-@@ -1 +1 @@
--0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1753533131 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
-+0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1715652850 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
-diff --color -urN iScanU/.git/logs/refs/heads/master custom_code/.git/logs/refs/heads/master
---- iScanU/.git/logs/refs/heads/master	2025-07-26 21:32:11
-+++ custom_code/.git/logs/refs/heads/master	2025-07-26 21:31:46
-@@ -1 +1 @@
--0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1753533131 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
-+0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1715652850 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
-diff --color -urN iScanU/.git/logs/refs/remotes/origin/HEAD custom_code/.git/logs/refs/remotes/origin/HEAD
---- iScanU/.git/logs/refs/remotes/origin/HEAD	2025-07-26 21:32:11
-+++ custom_code/.git/logs/refs/remotes/origin/HEAD	2025-07-26 21:31:46
-@@ -1 +1 @@
--0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1753533131 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
-+0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1715652850 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
 diff --color -urN iScanU/Makefile custom_code/Makefile
 --- iScanU/Makefile	2025-07-26 21:32:11
 +++ custom_code/Makefile	2025-07-26 21:31:46

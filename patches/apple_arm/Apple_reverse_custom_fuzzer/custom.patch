@@ -1,23 +1,5 @@
 Binary files iScanU/.DS_Store and iScanU_AppleLLVM19.0_reverse/.DS_Store differ
 Binary files iScanU/.git/index and iScanU_AppleLLVM19.0_reverse/.git/index differ
-diff --color -urN iScanU/.git/logs/HEAD iScanU_AppleLLVM19.0_reverse/.git/logs/HEAD
---- iScanU/.git/logs/HEAD	2025-07-26 21:32:11
-+++ iScanU_AppleLLVM19.0_reverse/.git/logs/HEAD	2025-03-26 00:51:36
-@@ -1 +1 @@
--0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1753533131 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
-+0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1715652850 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
-diff --color -urN iScanU/.git/logs/refs/heads/master iScanU_AppleLLVM19.0_reverse/.git/logs/refs/heads/master
---- iScanU/.git/logs/refs/heads/master	2025-07-26 21:32:11
-+++ iScanU_AppleLLVM19.0_reverse/.git/logs/refs/heads/master	2025-03-26 00:51:36
-@@ -1 +1 @@
--0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1753533131 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
-+0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1715652850 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
-diff --color -urN iScanU/.git/logs/refs/remotes/origin/HEAD iScanU_AppleLLVM19.0_reverse/.git/logs/refs/remotes/origin/HEAD
---- iScanU/.git/logs/refs/remotes/origin/HEAD	2025-07-26 21:32:11
-+++ iScanU_AppleLLVM19.0_reverse/.git/logs/refs/remotes/origin/HEAD	2025-03-26 00:51:36
-@@ -1 +1 @@
--0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1753533131 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
-+0000000000000000000000000000000000000000 6fc6ea4b5226403879607d01a3a592489867d414 potatopublic <stone@iyuseog-ui-Macmini.local> 1715652850 +0900	clone: from https://github.com/RensDofferhoff/iScanU.git
 diff --color -urN iScanU/Makefile iScanU_AppleLLVM19.0_reverse/Makefile
 --- iScanU/Makefile	2025-07-26 21:32:11
 +++ iScanU_AppleLLVM19.0_reverse/Makefile	2025-03-26 00:51:30
