@@ -36,7 +36,7 @@ void initializeGroups() {
     itg["add.2d"] = "ALU";
     itg["add.8b"] = "ALU";
     itg["addp.2d"] = "ALU";
-    itg["adr"] = "ALU"; //PC값으로 부터 상대주소 저장하고 register에 저장하는 명령어
+    itg["adr"] = "ALU";
     itg["addv.4s"] = "ALU";
     itg["adr"] = "ALU";
     itg["and"] = "ALU";
