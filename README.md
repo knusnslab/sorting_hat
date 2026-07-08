@@ -76,13 +76,6 @@ directly or copy/symlink it before running the script:
 build/bin/riscv/classifier <input-file> <line-count> <output-file>
 ```
 
-`scripts/trim.sh` post-processes classifier output by extracting selected fields
-and deduplicating the result:
-
-```sh
-./scripts/trim.sh <result-file>
-```
-
 ## Running Overview
 ```text
 GP1 : 0x3fb4219000
