@@ -17,12 +17,12 @@ classifier : classifier.c
 	gcc -O2 -w -g -o $@ $^ $(LLVM_INC) $(OS)
 	install_name_tool -add_rpath ~/your/llvm/lib/path classifier
 
-verify : verify.c
+accuracy : accuracy.cpp
 	g++ -O2 -g -o $@ $^ $(LLVM_INC)
-	install_name_tool -add_rpath ~/your/llvm/lib/path verify
+	install_name_tool -add_rpath ~/your/llvm/lib/path accuracy
 
 accuMet : accuMet.cpp
 	$(ompCPP) $(ompCFLAGS) -o $@ $^ $(ompLDFLAGS)
 
 clean :
-	rm classifier verify accuMet
+	rm classifier accuracy accuMet

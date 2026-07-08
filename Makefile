@@ -8,7 +8,7 @@ RISCV_BIN_DIR  := $(BIN_DIR)/riscv
 APPLE_CLASSIFIER_SRC := src/apple_arm/classifier.c
 RISCV_CLASSIFIER_SRC := src/riscv/classifier.c
 RISCV_INIT_SRC       := src/riscv/init.S
-VERIFY_SRC           := test/verify.cpp
+ACCURACY_SRC         := test/accuracy.cpp
 ACCUMET_SRC          := test/accuMet.cpp
 
 # ===== compilers =====
@@ -57,7 +57,7 @@ endif
 
 all: apple riscv
 
-apple: $(APPLE_BIN_DIR)/classifier $(APPLE_BIN_DIR)/verify $(APPLE_BIN_DIR)/accuMet
+apple: $(APPLE_BIN_DIR)/classifier $(APPLE_BIN_DIR)/accuracy $(APPLE_BIN_DIR)/accuMet
 riscv: $(RISCV_BIN_DIR)/classifier
 
 tree:
@@ -81,7 +81,7 @@ $(APPLE_BIN_DIR)/classifier: $(APPLE_CLASSIFIER_SRC) | $(APPLE_BIN_DIR)
 	$(APPLE_CC) $(APPLE_CFLAGS) $(APPLE_DEFS) -o $@ $^ $(APPLE_LLVM_FLAGS) $(APPLE_RPATH)
 	$(POST_LINK_APPLE)
 
-$(APPLE_BIN_DIR)/verify: $(VERIFY_SRC) | $(APPLE_BIN_DIR)
+$(APPLE_BIN_DIR)/accuracy: $(ACCURACY_SRC) | $(APPLE_BIN_DIR)
 	$(APPLE_CXX) $(APPLE_CXXFLAGS) -o $@ $^ $(APPLE_LLVM_FLAGS) $(APPLE_RPATH)
 	$(POST_LINK_APPLE)
 
@@ -95,4 +95,3 @@ $(RISCV_BIN_DIR)/classifier: $(RISCV_CLASSIFIER_SRC) $(RISCV_INIT_SRC) | $(RISCV
 # ===== clean =====
 clean:
 	rm -rf $(BUILD_DIR)
-

@@ -1,5 +1,5 @@
 /*
-     T-result(Classifier 결과)와 V-result(Verify 결과)를 비교하여 정확도를 측정해주는 프로그램
+     T-result(Classifier 결과)와 V-result(accuracy.cpp 결과)를 비교하여 정확도를 측정해주는 프로그램
 */
 
 #include <iostream>
@@ -80,4 +80,3 @@ int main() {
 
     return 0;
 }
-
