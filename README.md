@@ -1,7 +1,7 @@
 # Sorting hat
 
 `sorting hat` is a framework for classifying undocumented instructions 
-on Apple ARM and RISC-V systems. It is designed to assist the post-discovery 
+on ARM and RISC-V systems. It is designed to assist the post-discovery 
 analysis of undocumented instructions by assigning behavior tags based on changes in architectural state. 
 These tags help organize instruction semantics and support later-stage verification. 
 The repository contains fuzzer patches, architecture-specific classifiers, 
