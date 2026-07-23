@@ -628,8 +628,8 @@ const char *BitsFlagsNames[] ={
 enum triaging_method_num {
     Normal = 0x0, //Undocumented instruction Triaging
     Forged = 0x1, //Compare Forged instruction and Orignal instruction
-    Skip = 0x2, // ?? 이건 뭐냐.. 무슨 의도였지?
-    Dry_run = 0x3 // 개 버러지 같이 첫번째 signal handler 들어가면 status 망가지는거 봐라 개 병신 컴 apple m1, 이걸 보고도 apple 잘만들었다 이지랄 하는 앱등이 있으면 나와봐
+    Skip = 0x2, 
+    Dry_run = 0x3 
 };
 const char *methodName[] = {
                         "Undoc Instr",
