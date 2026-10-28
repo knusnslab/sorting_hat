@@ -1,11 +1,24 @@
 # Sorting hat
-
+<!--
 `sorting hat` is a framework for classifying undocumented instructions 
 on ARM and RISC-V systems. It is designed to assist the post-discovery 
 analysis of undocumented instructions by assigning behavior tags based on changes in architectural state. 
 These tags help organize instruction semantics and support later-stage verification. 
 The repository contains fuzzer patches, architecture-specific classifiers, 
 and helper scripts for post-processing generated instruction traces.
+-->
+# Sorting Hat
+
+`Sorting Hat` is a research framework developed as part of the paper 
+**"[Automated Discovery, Classification, and Systematic Security Verification Methodology for Undocumented Instructions]"**, 
+published at the **63rd ACM/IEEE Design Automation Conference (DAC 2026)**.
+The paper presents a systematic methodology for automatically discovering undocumented processor instructions, 
+classifying their behavior, and verifying their potential security implications. 
+Sorting Hat implements the instruction discovery and classification components of this methodology, 
+enabling automated behavioral analysis based on architectural state changes before and after instruction execution.
+This repository provides architecture-specific classifiers for ARM (Apple Silicon) and RISC-V, 
+patches for instruction fuzzers, and supporting scripts for processing execution traces. 
+The framework aims to reduce the manual effort required to analyze undocumented instructions and provide a foundation for subsequent security verification.
 
 ## Build
 
