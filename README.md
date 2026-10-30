@@ -1,4 +1,3 @@
-# Sorting hat
 <!--
 `sorting hat` is a framework for classifying undocumented instructions 
 on ARM and RISC-V systems. It is designed to assist the post-discovery 
